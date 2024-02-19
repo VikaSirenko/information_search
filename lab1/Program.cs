@@ -1,4 +1,5 @@
-﻿using static System.Console;
+﻿using System.Runtime.CompilerServices;
+using static System.Console;
 
 class Program
 {
@@ -139,18 +140,52 @@ class Program
             {
                 List<string> search_words = new List<string>();
                 search_words.AddRange(search_query.Split(new string[] { "AND" }, StringSplitOptions.None).Select(word => word.Trim()));
-                if (QueryVerification(terms, search_words) == true)
+                List<string> or_search_words = new List<string>();
+                foreach (string item in search_words)
                 {
-                    List<string> result = Search(search_words, set_of_terms);
-                    if (result != null)
+                    if (item.StartsWith("(") && item.EndsWith(")"))
                     {
-                        string commaSeparatedResult = string.Join(", ", result);
-                        WriteLine($"The search query '{search_query}' was found in the following documents: " + commaSeparatedResult);
+                        or_search_words.Add(item);
+                    }
+                }
+                List<string> and_search_words = new List<string>(search_words);
+
+                foreach (string value in search_words)
+                {
+                    if (or_search_words.Contains(value))
+                    {
+                        and_search_words.Remove(value);
+                    }
+                }
+                List<string> result_or_search = new List<string>();
+                if (or_search_words.Count != 0)
+                {
+                    result_or_search = DoORSearch(or_search_words, terms, set_of_terms);
+                }
+
+                if (QueryVerification(terms, and_search_words) == true)
+                {
+                    List<string> result_and_search = AndSearch(and_search_words, set_of_terms);
+                    if (result_or_search.Count == 0)
+                    {
+                        if (result_and_search != null)
+                        {
+                            string commaSeparatedResult = string.Join(", ", result_and_search);
+                            WriteLine($"The search query '{search_query}' was found in the following documents: " + commaSeparatedResult);
+                        }
+                        else
+                        {
+                            WriteLine($"The search query '{search_query}' was not found in any document");
+                        }
+
                     }
                     else
                     {
-                        WriteLine($"The search query '{search_query}' was not found in any document");
+                        List<string> result = GetCommonValuesAndOrSearch(result_and_search, result_or_search);
+                        string commaSeparatedResult = string.Join(", ", result);
+                        WriteLine($"The search query '{search_query}' was found in the following documents: " + commaSeparatedResult);
                     }
+
 
                 }
 
@@ -159,7 +194,8 @@ class Program
         }
     }
 
-    static List<string> Search(List<string> search_words, List<Dictionary<string, List<string>>> set_of_terms)
+
+    static List<string> AndSearch(List<string> search_words, List<Dictionary<string, List<string>>> set_of_terms)
     {
         Dictionary<string, List<string>> foundInDictionaries = new Dictionary<string, List<string>>();
 
@@ -181,9 +217,10 @@ class Program
                 }
             }
         }
+
         if (foundInDictionaries.Count == search_words.Count)
         {
-            List<string> search_result = FindCommonValues(foundInDictionaries);
+            List<string> search_result = FindCommonValuesAndSearch(foundInDictionaries);
             return search_result;
         }
         else
@@ -193,7 +230,34 @@ class Program
 
     }
 
-    static List<string> FindCommonValues(Dictionary<string, List<string>> dictionary)
+    static Dictionary<string, List<string>> OrSearch(List<string> search_words, List<Dictionary<string, List<string>>> set_of_terms)
+    {
+        Dictionary<string, List<string>> foundInDictionaries = new Dictionary<string, List<string>>();
+
+        foreach (string word in search_words)
+        {
+            foreach (var dictionary in set_of_terms)
+            {
+                foreach (var pair in dictionary)
+                {
+                    if (pair.Value.Contains(word))
+                    {
+                        if (!foundInDictionaries.ContainsKey(word))
+                        {
+                            foundInDictionaries.Add(word, new List<string>());
+                        }
+
+                        foundInDictionaries[word].Add(pair.Key);
+                    }
+                }
+            }
+        }
+
+        return foundInDictionaries;
+
+    }
+
+    static List<string> FindCommonValuesAndSearch(Dictionary<string, List<string>> dictionary)
     {
 
         HashSet<string> commonValues = new HashSet<string>(dictionary.First().Value);
@@ -204,6 +268,53 @@ class Program
         }
 
         return commonValues.ToList();
+    }
+
+    static List<string> DoORSearch(List<string> or_query, List<string> terms, List<Dictionary<string, List<string>>> set_of_terms)
+    {
+        Dictionary<string, List<string>> result = new Dictionary<string, List<string>>();
+        foreach (string query in or_query)
+        {
+            List<string> or_words = new List<string>();
+            or_words.AddRange(query.Trim('(', ')').Split(new string[] { "OR" }, StringSplitOptions.RemoveEmptyEntries).Select(word => word.Trim()));
+            if (QueryVerification(terms, or_words) == true)
+            {
+                Dictionary<string, List<string>> buff = OrSearch(or_words, set_of_terms);
+                foreach (var pair in buff)
+                {
+                    if (!result.ContainsKey(pair.Key))
+                    {
+                        result[pair.Key] = new List<string>();
+                    }
+
+                    result[pair.Key].AddRange(pair.Value);
+                }
+            }
+        }
+
+        return GetResultOrSearch(result);
+    }
+
+
+    static List<string> GetResultOrSearch(Dictionary<string, List<string>> dictionary)
+    {
+        List<string> result = new List<string>();
+        foreach (var pair in dictionary)
+        {
+            result.AddRange(pair.Value);
+        }
+
+        return result;
+    }
+
+
+    static List<string> GetCommonValuesAndOrSearch(List<string> list1, List<string> list2)
+    {
+        HashSet<string> set1 = new HashSet<string>(list1);
+        HashSet<string> set2 = new HashSet<string>(list2);
+        IEnumerable<string> intersection = set1.Intersect(set2);
+
+        return intersection.ToList();
     }
 }
 
